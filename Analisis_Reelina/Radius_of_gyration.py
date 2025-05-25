@@ -1,52 +1,63 @@
 import sys
 sys.path.append("/home/10033944/paquets")
-import os
 import MDAnalysis as mda
 import pandas as pd
+from matplotlib import pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
 
-# Definir variables como si fueran "$algo"
-DIRECTORIO = os.path.expanduser("~/Sortides_MD_reelina")
-OUTPUT_DIR = os.path.expanduser("~/resultats_rgyr")
-NC_DIR = os.path.expanduser("~/conformacions")
+# Load your trajectory and topology files
+import os
+INPUT_NC="Sortides_MD_reelina"
+INPUT_PARM7="seq_parm7"
 
-# Asegurar que la carpeta de resultats existeix
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+fitxers_nc = [f for f in os.listdir(INPUT_NC) if f.endswith(".nc")]
 
-# Iterar sobre els fitxers .parm7
-for parm_file in os.listdir(DIRECTORIO):
-    if parm_file.endswith(".parm7"):
-        BASE_NAME = os.path.splitext(parm_file)[0]  # Simulant $base_name
+# Generar els noms dels fitxers .parm7 corresponents
+fitxers_parm7 = [f.replace(".nc", ".parm7") for f in fitxers_nc]
 
-        PARM7_FILE = f"$DIRECTORIO/{BASE_NAME}.parm7"
-        NC_FILE = f"$NC_DIR/{BASE_NAME}/03_Prod.nc"
+# Iterar sobre les parelles de fitxers .nc i .parm7
+for conf_nc, conf_parm7 in zip(fitxers_nc, fitxers_parm7):
+    u = mda.Universe(
+        os.path.expanduser(f"{INPUT_PARM7}/{conf_parm7}"),
+        os.path.expanduser(f"{INPUT_NC}/{conf_nc}"),
+        topology_format="PARM7"
+    )
 
-        # Expandir les variables (com en Bash)
-        PARM7_FILE = os.path.expanduser(PARM7_FILE.replace("$DIRECTORIO", DIRECTORIO))
-        NC_FILE = os.path.expanduser(NC_FILE.replace("$NC_DIR", NC_DIR))
+    # Seleccionar els àtoms de la proteïna
+    protein = u.select_atoms("protein")
 
-        if not os.path.exists(PARM7_FILE) or not os.path.exists(NC_FILE):
-            print(f"Fitxers no trobats per: {BASE_NAME}")
-            continue
+    # Calcular el radi de giració
+    time = []
+    rgyr = []
 
-        # Carregar trajectòria
-        u = mda.Universe(PARM7_FILE, NC_FILE, topology_format="PARM7")
+    for frame in u.trajectory:
+        time.append(u.trajectory.time)
+        rgyr.append(protein.radius_of_gyration())
 
-        # Seleccionar àtoms de la proteïna
-        protein = u.select_atoms("protein")
+    # Crear un CSV amb els resultats
+    rgyr_df = pd.DataFrame(list(zip(time, rgyr)),
+                           columns=['Time (ps)', 'Radius of gyration (A)'],
+                           index=None)
+    rgyr_df.to_csv(f"RG_{conf_nc.replace('.nc', '')}.csv", index=False)
 
-        # Calcular el radi de gir
-        time = []
-        rgyr = []
 
-        for frame in u.trajectory:
-            time.append(u.trajectory.time)
-            rgyr.append(protein.radius_of_gyration())
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
-        # Crear un CSV amb els resultats
-        OUTPUT_CSV = f"$OUTPUT_DIR/{BASE_NAME}_RG.csv"
-        OUTPUT_CSV = os.path.expanduser(OUTPUT_CSV.replace("$OUTPUT_DIR", OUTPUT_DIR))
+# Llista tots els fitxers CSV creats (que comencen amb "RG_")
+csv_files = [f for f in os.listdir() if f.startswith("RG_") and f.endswith(".csv")]
 
-        rgyr_df = pd.DataFrame(list(zip(time, rgyr)), columns=['Time (ps)', 'Radius of gyration (A)'])
-        rgyr_df.to_csv(OUTPUT_CSV, index=False)
+plt.figure(figsize=(12, 8))
+for csv_file in csv_files:
+    # Carrega el fitxer CSV
+    df = pd.read_csv(csv_file)
+    # Ploteja la corba (Temps vs. Radi de giració)
+    plt.plot(df["Time (ps)"], df["Radius of gyration (A)"], label=csv_file)
 
-        print(f"Resultats guardats en: {OUTPUT_CSV}")
+plt.xlabel("Time (ps)")
+plt.ylabel("Radius of gyration (A)")
+plt.title("Superposició del radi de giració per a cada simulació")
+plt.legend(loc="best")
+plt.show()
