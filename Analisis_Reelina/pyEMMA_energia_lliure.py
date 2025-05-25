@@ -1,3 +1,6 @@
+#!/home/marct/miniforge3/envs/pyemma_env/bin/python
+
+
 import pyemma
 import matplotlib.pyplot as plt
 import numpy as np
